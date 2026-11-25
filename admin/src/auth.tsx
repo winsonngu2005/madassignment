@@ -7,6 +7,7 @@ import type { LoginResult } from './models';
 interface AuthState {
   user: LoginResult | null;
   busy: boolean;
+  isAdmin: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
 }
@@ -17,6 +18,10 @@ function loadStored(): LoginResult | null {
   try {
     const token = localStorage.getItem(TOKEN_KEY);
     const user = JSON.parse(localStorage.getItem(USER_KEY) ?? 'null');
+    if (token && user?.role === 'admin' && user.name === 'Admin Alice') {
+      user.name = 'Jia Ying';
+      localStorage.setItem(USER_KEY, JSON.stringify(user));
+    }
     return token && user ? user : null;
   } catch {
     return null;
@@ -38,8 +43,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setBusy(true);
     try {
       const result = await api.login(email, password);
-      if (result.role !== 'admin') {
-        throw new Error('This account is not an administrator.');
+      if (result.role !== 'admin' && result.role !== 'staff') {
+        throw new Error('Residents sign in from the mobile app.');
       }
       localStorage.setItem(TOKEN_KEY, result.token);
       localStorage.setItem(USER_KEY, JSON.stringify(result));
@@ -55,7 +60,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
-  const value = useMemo(() => ({ user, busy, login, logout }), [user, busy, login, logout]);
+  const isAdmin = user?.role === 'admin';
+  const value = useMemo(() => ({ user, busy, isAdmin, login, logout }), [user, busy, isAdmin, login, logout]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

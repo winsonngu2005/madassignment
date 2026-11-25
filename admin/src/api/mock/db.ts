@@ -1,15 +1,16 @@
-// In-memory database used by the mock API layer.
-// Seeded once, persisted to localStorage so triage actions survive page reloads.
-// All dates are generated relative to "today" so the demo dashboard is never stale.
+// In-memory seed database used by the mock API layer.
+// Seeded once, persisted to localStorage so triage actions survive reloads.
+// Dates are generated relative to "today" so the demo dashboard is never stale.
 
 import type {
   Category,
+  Priority,
   Rating,
   StatusLog,
   Ticket,
   TicketStatus,
   User,
-  Priority,
+  Zone,
 } from '../../models';
 
 export interface Db {
@@ -18,7 +19,7 @@ export interface Db {
   tickets: Ticket[];
   logs: StatusLog[];
   ratings: Rating[];
-  seq: { ticket: number; log: number; rating: number };
+  seq: { ticket: number; log: number; rating: number; request: number };
 }
 
 const now = () => new Date();
@@ -28,17 +29,11 @@ function iso(d: Date): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:00`;
 }
 
-/** Timestamp N days ago at hh:mm (local), returns MySQL-style string. */
+/** Timestamp N days ago at hh:mm (local), MySQL-style string. */
 function daysAgo(n: number, h = 9, m = 5): string {
   const d = now();
   d.setDate(d.getDate() - n);
   d.setHours(h, m, 0, 0);
-  return iso(d);
-}
-
-function addHours(ts: string, hours: number): string {
-  const d = new Date(ts.replace(' ', 'T'));
-  d.setHours(d.getHours() + Math.floor(hours));
   return iso(d);
 }
 
@@ -53,14 +48,50 @@ function photo(label: string, hue: number): string {
   return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
 }
 
+// Default passwords are 'password123' for every seeded account.
+
 const users: User[] = [
-  { id: 1, name: 'Admin Alice', email: 'admin@uts.edu.my', phone: '+60111222333', role: 'admin' },
-  { id: 2, name: 'Mei Ling', email: 'meiling@uts.edu.my', phone: '+60123456789', role: 'resident' },
-  { id: 3, name: 'Daniel Tan', email: 'daniel@uts.edu.my', phone: '+60199887766', role: 'resident' },
-  { id: 4, name: 'Winson Ngu', email: 'winson@uts.edu.my', phone: '+60111222333', role: 'resident' },
-  { id: 10, name: 'Technician Lim', email: 'lim.wk@uts.edu.my', phone: '+60165550001', role: 'staff' },
-  { id: 11, name: 'Technician Wong', email: 'wong.ch@uts.edu.my', phone: '+60165550002', role: 'staff' },
-  { id: 12, name: 'Technician Ahmad', email: 'ahmad.r@uts.edu.my', phone: '+60165550003', role: 'staff' },
+  { id: 1, name: 'Jia Ying', email: 'admin@gmail.com', phone: '+60111222333', role: 'admin', professions: [], zones: [] },
+  { id: 2, name: 'Mei Ling', email: 'meiling@uts.edu.my', phone: '+60123456789', role: 'resident', professions: [], zones: [] },
+  { id: 3, name: 'Daniel Tan', email: 'daniel@uts.edu.my', phone: '+60199887766', role: 'resident', professions: [], zones: [] },
+  { id: 4, name: 'Winson Ngu', email: 'winson@uts.edu.my', phone: '+60111222333', role: 'resident', professions: [], zones: [] },
+  {
+    id: 10,
+    name: 'Technician Lim',
+    email: 'lim.wk@gmail.com',
+    phone: '+60165550001',
+    role: 'staff',
+    professions: ['electrician', 'maintenance', 'plumbing_electrical_repair'],
+    zones: ['A'],
+  },
+  {
+    id: 11,
+    name: 'Technician Wong',
+    email: 'wong.ch@gmail.com',
+    phone: '+60165550002',
+    role: 'staff',
+    professions: ['maintenance', 'plumber', 'plumbing_electrical_repair', 'masonry_odd_job'],
+    zones: ['A', 'B'],
+  },
+  {
+    id: 12,
+    name: 'Technician Ahmad',
+    email: 'ahmad.r@gmail.com',
+    phone: '+60165550003',
+    role: 'staff',
+    professions: ['noise_control', 'security', 'cleaner'],
+    zones: ['B'],
+  },
+  {
+    // default worker login account
+    id: 14,
+    name: 'Worker Wong',
+    email: 'worker@gmail.com',
+    phone: '+60167770088',
+    role: 'staff',
+    professions: ['lift_technician', 'maintenance', 'cleaner', 'masonry_odd_job'],
+    zones: ['A'],
+  },
 ];
 
 const categories: Category[] = [
@@ -68,11 +99,16 @@ const categories: Category[] = [
   { id: 2, name: 'Garbage Collection', code: 'garbage', sla_hours: 24 },
   { id: 3, name: 'Public Facility', code: 'facility', sla_hours: 72 },
   { id: 4, name: 'Noise Disturbance', code: 'noise', sla_hours: 48 },
+  { id: 5, name: 'Leak / Plumbing & Electrical', code: 'leak_plumbing_electrical', sla_hours: 48 },
+  { id: 6, name: 'Cleaning', code: 'cleaning', sla_hours: 24 },
+  { id: 7, name: 'Masonry / Odd-job', code: 'masonry', sla_hours: 72 },
+  { id: 8, name: 'Others', code: 'others', sla_hours: 48 },
 ];
 
 interface SeedTicket {
   residentId: number;
   catId: number;
+  zone: Zone;
   title: string;
   desc?: string;
   loc: string;
@@ -83,6 +119,8 @@ interface SeedTicket {
   created: string;
   status: TicketStatus;
   assignee?: number;
+  auto?: boolean;
+  public?: boolean;
   acceptedAt?: string;
   dueAt?: string;
   completedAt?: string;
@@ -99,7 +137,7 @@ interface SeedTicket {
 
 const seedTickets: SeedTicket[] = [
   {
-    residentId: 2, catId: 1,
+    residentId: 2, catId: 1, zone: 'A',
     title: 'Corridor light out for three nights',
     desc: 'The ceiling light near the staircase does not turn on.',
     loc: 'Block A, Level 3, end of corridor',
@@ -110,7 +148,7 @@ const seedTickets: SeedTicket[] = [
     status: 'pending',
   },
   {
-    residentId: 3, catId: 2,
+    residentId: 3, catId: 2, zone: 'B',
     title: 'Garbage bins overflowing at Block B',
     desc: 'Collection missed twice this week; smell near lift lobby.',
     loc: 'Block B, ground floor, lift lobby',
@@ -121,58 +159,71 @@ const seedTickets: SeedTicket[] = [
     status: 'pending',
   },
   {
-    residentId: 4, catId: 1,
+    residentId: 4, catId: 1, zone: 'A',
     title: 'Street lamp flickering on Jalan 3/12',
     desc: 'Flickers after 8 PM, path to guardhouse is dark.',
     loc: 'Jalan 3/12, near guardhouse',
-    lat: 3.1420, lng: 101.6955,
+    lat: 3.142, lng: 101.6955,
     priority: 'normal',
     created: daysAgo(1, 21, 5),
     status: 'pending',
   },
+  // noise in Zone A: no noise-control staff covers Zone A -> stays unassigned
   {
-    residentId: 2, catId: 4,
+    residentId: 2, catId: 4, zone: 'A',
     title: 'Late-night generator vibration noise',
     desc: 'Persistent humming sound after 11 PM near utility room.',
-    loc: 'Block C, Level 1, near utility room',
+    loc: 'Block A annex, near utility room',
     priority: 'urgent',
     created: daysAgo(1, 23, 30),
     status: 'pending',
   },
   {
-    residentId: 3, catId: 3,
+    residentId: 3, catId: 3, zone: 'A',
     title: 'Broken bench at playground',
     desc: 'One plank missing, children could trip.',
-    loc: 'Central playground, beside swing set',
+    loc: 'Zone A playground, beside swing set',
     lat: 3.1398, lng: 101.6885,
     photos: [photo('Facility / playground', 210)],
     priority: 'low',
     created: daysAgo(2, 10, 20),
     status: 'pending',
   },
+  // public-pool ticket: released by the admin for any staff to take
   {
-    residentId: 4, catId: 1,
+    residentId: 4, catId: 3, zone: 'B',
+    title: 'Broken swing chain at Zone B playground',
+    loc: 'Zone B playground, swing set 2',
+    priority: 'normal',
+    created: daysAgo(1, 11, 0),
+    status: 'pending',
+    public: true,
+  },
+  {
+    residentId: 4, catId: 1, zone: 'A',
     title: 'Two lights out at car park entrance',
-    loc: 'Car park P1 entrance ramp',
+    loc: 'Zone A car park P1 entrance ramp',
     photos: [photo('Lighting / car park', 28)],
     priority: 'normal',
     created: daysAgo(1, 9, 0),
     status: 'accepted',
+    assignee: 10,
     acceptedAt: daysAgo(0, 9, 10),
     actorAccepted: 'Admin Alice',
   },
   {
-    residentId: 2, catId: 2,
+    residentId: 2, catId: 2, zone: 'B',
     title: 'Recycle point not cleared for a week',
-    loc: 'Recycle point behind Block D',
+    loc: 'Zone B recycle point behind Block D',
     priority: 'low',
     created: daysAgo(2, 15, 45),
     status: 'accepted',
+    assignee: 11,
     acceptedAt: daysAgo(1, 9, 0),
     actorAccepted: 'Admin Alice',
   },
   {
-    residentId: 3, catId: 3,
+    residentId: 3, catId: 3, zone: 'A',
     title: 'Lift button panel faulty in Block A',
     desc: 'Level 5 button unresponsive.',
     loc: 'Block A, Lift 2',
@@ -181,29 +232,31 @@ const seedTickets: SeedTicket[] = [
     created: daysAgo(2, 8, 30),
     status: 'in_progress',
     acceptedAt: daysAgo(2, 9, 5),
-    assignee: 10,
+    assignee: 14,
+    auto: true,
     dueAt: daysAgo(0, 9, 5),
     actorAccepted: 'Admin Alice',
-    actorAssigned: 'Admin Alice',
-    assignNote: 'Assigned to electrical gang; vendor quote pending.',
+    actorAssigned: 'Auto-match (zone A + Public Facility)',
+    assignNote: 'Auto-assigned by zone + category match; vendor quote pending.',
   },
   {
-    residentId: 4, catId: 4,
+    residentId: 4, catId: 4, zone: 'B',
     title: 'Construction noise before 7 AM',
     desc: 'Renovation in unit C-12 starts around 6:40 AM daily.',
-    loc: 'Block C, unit C-12',
+    loc: 'Zone B, unit C-12',
     priority: 'normal',
     created: daysAgo(3, 7, 15),
     status: 'in_progress',
     acceptedAt: daysAgo(2, 8, 0),
     assignee: 12,
+    auto: true,
     dueAt: daysAgo(0, 8, 0),
     actorAccepted: 'Admin Alice',
-    actorAssigned: 'Admin Alice',
+    actorAssigned: 'Auto-match (zone B + Noise Disturbance)',
     assignNote: 'Notice letter issued to unit owner; follow-up visit.',
   },
   {
-    residentId: 2, catId: 1,
+    residentId: 2, catId: 1, zone: 'A',
     title: 'Staircase light replaced — follow-up',
     desc: 'Light was replaced but flickers again after two days.',
     loc: 'Block A, Level 3, staircase',
@@ -223,9 +276,9 @@ const seedTickets: SeedTicket[] = [
     rating: { stars: 5, comment: 'Fast and quiet fix!', at: daysAgo(5, 18, 0) },
   },
   {
-    residentId: 3, catId: 2,
+    residentId: 3, catId: 2, zone: 'B',
     title: 'Missed collection at Block B',
-    loc: 'Block B, bin centre',
+    loc: 'Zone B bin centre',
     priority: 'normal',
     created: daysAgo(5, 8, 0),
     status: 'completed',
@@ -234,34 +287,34 @@ const seedTickets: SeedTicket[] = [
     completedAt: daysAgo(4, 14, 0),
     dueAt: daysAgo(4, 9, 0),
     actorAccepted: 'Admin Alice',
-    actorAssigned: 'Admin Alice',
+    actorAssigned: 'Auto-match (zone B + Garbage Collection)',
     actorCompleted: 'Technician Wong',
     completeNote: 'Contractor re-routed the truck; schedule restored.',
     rating: { stars: 4, comment: 'Good but took one extra day.', at: daysAgo(4, 20, 0) },
   },
   {
-    residentId: 4, catId: 3,
+    residentId: 4, catId: 3, zone: 'B',
     title: 'Drinking fountain leaking',
-    loc: 'Community centre lobby',
-    lat: 3.1395, lng: 101.6880,
+    loc: 'Zone B community centre lobby',
+    lat: 3.1395, lng: 101.688,
     photos: [photo('Facility / fountain', 210), photo('Facility / leak close-up', 210)],
     priority: 'low',
     created: daysAgo(8, 13, 10),
     status: 'completed',
     acceptedAt: daysAgo(7, 9, 0),
-    assignee: 12,
+    assignee: 11,
     completedAt: daysAgo(6, 10, 0),
     dueAt: daysAgo(4, 9, 0),
     actorAccepted: 'Admin Alice',
     actorAssigned: 'Admin Alice',
-    actorCompleted: 'Technician Ahmad',
+    actorCompleted: 'Technician Wong',
     completeNote: 'Replaced cartridge and tightened inlet joint.',
   },
   {
-    residentId: 2, catId: 1,
+    residentId: 2, catId: 1, zone: 'B',
     title: 'Back lane lighting outside community boundary',
     desc: 'Back lane behind row houses belongs to municipal council.',
-    loc: 'Back lane, west of Block D',
+    loc: 'Zone B back lane, west of Block D',
     priority: 'low',
     created: daysAgo(3, 12, 0),
     status: 'rejected',
@@ -269,10 +322,10 @@ const seedTickets: SeedTicket[] = [
     actorAccepted: 'Admin Alice',
   },
   {
-    residentId: 3, catId: 4,
+    residentId: 3, catId: 4, zone: 'B',
     title: 'Noise from karaoke session',
     desc: 'Loud karaoke past midnight over the weekend.',
-    loc: 'Block A, Level 5',
+    loc: 'Zone B, Block C, Level 5',
     priority: 'normal',
     created: daysAgo(1, 22, 45),
     status: 'cancelled',
@@ -293,7 +346,7 @@ export function buildSeed(): Db {
     tickets: [],
     logs: [],
     ratings: [],
-    seq: { ticket: 0, log: 0, rating: 0 },
+    seq: { ticket: 0, log: 0, rating: 0, request: 0 },
   };
 
   const userName = (id: number) => users.find((u) => u.id === id)?.name ?? `User#${id}`;
@@ -313,6 +366,7 @@ export function buildSeed(): Db {
       category_id: c.id,
       category_code: c.code,
       category_name: c.name,
+      zone: s.zone,
       title: s.title,
       description: s.desc ?? null,
       location_desc: s.loc,
@@ -323,6 +377,11 @@ export function buildSeed(): Db {
       priority: s.priority,
       assignee_id: s.assignee ?? null,
       assignee_name: s.assignee ? userName(s.assignee) : null,
+      auto_assigned: s.auto ?? false,
+      co_assignee_id: null,
+      co_assignee_name: null,
+      is_public: s.public ?? false,
+      requests: [],
       due_at: s.dueAt ?? null,
       accepted_at: s.acceptedAt ?? null,
       completed_at: s.completedAt ?? null,
@@ -333,7 +392,6 @@ export function buildSeed(): Db {
       updated_at: s.completedAt ?? s.cancelledAt ?? created,
     });
 
-    // Status history — every transition that produced the current state.
     const pushLog = (
       from: TicketStatus | null,
       to: TicketStatus,
@@ -365,8 +423,7 @@ export function buildSeed(): Db {
       pushLog('in_progress', 'completed', s.actorCompleted, s.completedAt, s.completeNote ?? 'Work completed.');
     }
     if (s.rejectReason) {
-      pushLog('pending', 'rejected', s.actorAccepted ?? 'Admin Alice', s.created,
-        `Rejected: ${s.rejectReason}`);
+      pushLog('pending', 'rejected', s.actorAccepted ?? 'Admin Alice', s.created, `Rejected: ${s.rejectReason}`);
     }
     if (s.cancelledReason && s.cancelledAt) {
       pushLog('pending', 'cancelled', userName(s.residentId), s.cancelledAt, s.cancelledReason);
@@ -385,7 +442,8 @@ export function buildSeed(): Db {
     }
   });
 
+  db.users.forEach((u) => { u.duty_status ??= 'on_duty'; });
   return db;
 }
 
-export { iso, addHours };
+export { iso };

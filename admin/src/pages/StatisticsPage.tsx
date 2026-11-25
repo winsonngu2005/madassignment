@@ -23,6 +23,10 @@ export default function StatisticsPage() {
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load statistics.'));
   }, []);
 
+  const printReport = () => {
+    window.print();
+  };
+
   const trendOption = useMemo<EChartsOption>(() => {
     if (!stats) return {};
     return {
@@ -108,6 +112,12 @@ export default function StatisticsPage() {
           </h1>
           <p>Derived live from tickets and status logs — figures update after every triage action.</p>
         </div>
+        <div className="actions">
+          <button className="btn btn--ghost" onClick={printReport} title="Print the statistics report">
+            <i className="fa-solid fa-print" aria-hidden="true" />
+            Print
+          </button>
+        </div>
       </div>
 
       <div className="kpi-grid">
@@ -143,17 +153,17 @@ export default function StatisticsPage() {
 
       <div className="card chart-card">
         <h2>Tickets reported — last 14 days</h2>
-        <Chart option={trendOption} />
+        <Chart option={trendOption} height={420} />
       </div>
 
       <div className="grid-2" style={{ marginTop: 16 }}>
         <div className="card chart-card" style={{ marginTop: 0 }}>
           <h2>Share by category</h2>
-          <Chart option={pieOption} height={300} />
+          <Chart option={pieOption} height={420} />
         </div>
         <div className="card chart-card" style={{ marginTop: 0 }}>
           <h2>Average handling time by category (accepted → completed)</h2>
-          <Chart option={avgOption} height={300} />
+          <Chart option={avgOption} height={420} />
         </div>
       </div>
     </>

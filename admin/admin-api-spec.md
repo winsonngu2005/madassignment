@@ -216,3 +216,27 @@ resident: pending/accepted ──cancel──→ cancelled（居民端行为，�
 
 每次状态变更必须同事务写入 `ticket_status_logs` 一行 —— 这是两端时间轴与统计口径的共同来源。
 派单时 `due_at` 建议由管理端提交（面板已按分类 `sla_hours` 预填），后端亦可做兜底校验。
+
+## Shared Admin/Staff workflow additions (P3/P1 contract)
+
+- Admin Staff Zones supports `PATCH /admin/staff/{id}` for `name`, `email`, `phone`, `zones`, and `professions`, and `DELETE /admin/staff/{id}`. Deleting a staff account must clear/requeue that person's active assignments before removal.
+- `PATCH /admin/tickets/{id}/assign` must accept an unassigned `pending` ticket and selected `assignee_id`, then set it to `accepted` so the staff member can start processing. It must no longer reject pending tickets from the Unassigned pool.
+
+The migration in `backend_workflow_migration.sql` is the source for the new persistent fields and task tables. Keep one ticket service and extend its transactions; do not create separate ticket assignment implementations.
+
+### Duty state and routing
+
+- `GET /admin/staff` returns `duty_status` (`on_duty` / `off_duty`) with each staff record.
+- `PATCH /admin/staff/{id}/duty` accepts `{ "duty_status": "on_duty" | "off_duty" }`. Staff may update their own status; admins may update staff status. Admin duty state is also used by the Others fallback.
+- Route eligible tickets by category job tag, service zone, and `duty_status='on_duty'`. Create an offer for every matching staff member. Do not set `assignee_id` until one staff member accepts.
+- `PATCH /admin/tickets/{id}/accept` supports Staff and Admin. For a staff claim, atomically set the assignee and accepted status only when the ticket remains pending and unclaimed. Return `409` when another worker won.
+- If no eligible on-duty worker matches, leave the ticket unassigned for Admin. For Others, publish to the public staff pool only if no Admin is On Duty.
+
+### Work tasks, relay, and support
+
+- Staff acceptance moves the ticket to `accepted`; `PATCH /admin/tickets/{id}/start` moves it to `in_progress`.
+- `PATCH /admin/tickets/{id}/complete` accepts optional `relay_tasks` as a JSON array in the multipart form, plus 1–3 after-repair photos. Insert ordered work-task nodes. Activate only the next node after its prerequisite completes.
+- `POST /admin/tickets/{id}/support` accepts `{ "helper_id": number, "reason": string }`. In one transaction, block the current task, create and assign the prerequisite task to an on-duty colleague, link the blocked task to it, and increment `handoff_count`.
+- When every work task is complete, set the parent ticket to `completed`, set `acceptance_status='awaiting_acceptance'`, and set `acceptance_due_at` to 48 hours later.
+- The Resident team owns confirmation, rating, and return-for-rework endpoints. Those actions must update `ticket_acceptance_events`; a scheduled backend job auto-accepts tickets past their deadline.
+- When `handoff_count > 3`, set `admin_attention=1` and include the reason in the ticket response so the Admin panel can highlight it.

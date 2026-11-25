@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, USE_MOCK } from '../api';
 import {
   addDemoTicket,
   clearDemoTickets,
@@ -10,7 +9,7 @@ import {
 import Dropdown from '../components/Dropdown';
 import PriorityTag from '../components/PriorityTag';
 import StatusBadge from '../components/StatusBadge';
-import type { Priority, Ticket, TicketStatus } from '../models';
+import type { Category, Priority, Ticket, TicketStatus, Zone } from '../models';
 import { toast } from '../util';
 
 const STATUS_OPTIONS: TicketStatus[] = [
@@ -20,6 +19,17 @@ const STATUS_OPTIONS: TicketStatus[] = [
   'completed',
   'rejected',
   'cancelled',
+];
+
+const MOCK_CATEGORIES: Category[] = [
+  { id: 1, name: 'Lighting', code: 'lighting', sla_hours: 48 },
+  { id: 2, name: 'Garbage Collection', code: 'garbage', sla_hours: 24 },
+  { id: 3, name: 'Public Facility', code: 'facility', sla_hours: 72 },
+  { id: 4, name: 'Noise Disturbance', code: 'noise', sla_hours: 48 },
+  { id: 5, name: 'Leak / Plumbing & Electrical', code: 'leak_plumbing_electrical', sla_hours: 48 },
+  { id: 6, name: 'Cleaning', code: 'cleaning', sla_hours: 24 },
+  { id: 7, name: 'Masonry / Odd-job', code: 'masonry', sla_hours: 72 },
+  { id: 8, name: 'Others', code: 'others', sla_hours: 48 },
 ];
 
 interface EditDraft {
@@ -33,8 +43,15 @@ interface EditDraft {
 }
 
 export default function TestDataPage() {
+  const testTabs = ['Ticket Pool', 'Unassigned', 'Statistics', 'Staff Zones', 'Requests'] as const;
+  const [activeTab, setActiveTab] = useState<(typeof testTabs)[number]>('Ticket Pool');
+  const [mockStaff, setMockStaff] = useState(() => JSON.parse(localStorage.getItem('myhanns_test_staff_v1') ?? '[]') as { name: string; email: string; phone: string; zones: string; profession: string }[]);
+  const [mockRequests, setMockRequests] = useState(() => JSON.parse(localStorage.getItem('myhanns_test_requests_v1') ?? '[]') as { staff: string; request: string; status: string }[]);
+  const [staffDraft, setStaffDraft] = useState({ name: '', email: '', phone: '', zones: 'A', profession: 'Plumbing' });
+  const [requestDraft, setRequestDraft] = useState({ staff: '', request: '' });
   const [demos, setDemos] = useState<Ticket[]>([]);
   const [edit, setEdit] = useState<EditDraft | null>(null);
+  const categories = MOCK_CATEGORIES;
 
   // new ticket draft
   const [title, setTitle] = useState('');
@@ -43,13 +60,19 @@ export default function TestDataPage() {
   const [priority, setPriority] = useState<Priority>('normal');
   const [status, setStatus] = useState<TicketStatus>('pending');
   const [resident, setResident] = useState('');
+  const [zone, setZone] = useState<Zone>('A');
+  const [category, setCategory] = useState<number | ''>('');
 
   const refresh = useCallback(() => {
     setDemos(listDemoBundles().map((b) => b.ticket));
   }, []);
 
+  const saveMockStaff = (next: typeof mockStaff) => { setMockStaff(next); localStorage.setItem('myhanns_test_staff_v1', JSON.stringify(next)); };
+  const saveMockRequests = (next: typeof mockRequests) => { setMockRequests(next); localStorage.setItem('myhanns_test_requests_v1', JSON.stringify(next)); };
+
   useEffect(() => {
     refresh();
+    setCategory(MOCK_CATEGORIES[0].id);
   }, [refresh]);
 
   const add = () => {
@@ -57,13 +80,18 @@ export default function TestDataPage() {
       toast('Title and location are required.', 'err');
       return;
     }
+    const cat = categories.find((c) => c.id === category);
     addDemoTicket({
       title,
       location_desc: location,
       description: description || undefined,
       priority,
-      status,
+      status: activeTab === 'Unassigned' ? 'pending' : status,
       resident_name: resident,
+      zone,
+      category_id: cat?.id,
+      category_code: cat?.code,
+      category_name: cat?.name,
     });
     refresh();
     setTitle('');
@@ -100,12 +128,6 @@ export default function TestDataPage() {
     toast('All demo tickets removed.');
   };
 
-  const reseed = async () => {
-    await api.resetSeed();
-    toast('Seed database restored (resident-submitted simulation).');
-    window.location.reload();
-  };
-
   return (
     <>
       <div className="page-head">
@@ -117,10 +139,6 @@ export default function TestDataPage() {
           <p>Add, modify and delete demo tickets used to exercise Ticket Pool and Statistics.</p>
         </div>
         <div className="actions">
-          <button className="btn btn--ghost" onClick={() => void reseed()} title="Restore seed data">
-            <i className="fa-solid fa-database" aria-hidden="true" />
-            {USE_MOCK ? 'Reset seed db' : 'Reset seed db (mock only)'}
-          </button>
           <button className="btn btn--danger" onClick={clearAll}>
             <i className="fa-solid fa-trash-can" aria-hidden="true" />
             Delete all demo tickets
@@ -136,8 +154,13 @@ export default function TestDataPage() {
         switched on, this page keeps working exactly the same way.
       </div>
 
+      <nav className="subnav test-data-nav" aria-label="Test data sections">
+        {testTabs.map((tab) => <button key={tab} type="button" className={`subnav__btn${activeTab === tab ? ' is-on' : ''}`} onClick={() => setActiveTab(tab)}>{tab}</button>)}
+      </nav>
+
+      {(activeTab === 'Ticket Pool' || activeTab === 'Unassigned') && <>
       <div className="card">
-        <h2>Add a demo ticket</h2>
+        <h2>{activeTab === 'Unassigned' ? 'Add an unassigned demo ticket' : 'Add a demo ticket'}</h2>
         <div className="field">
           <span className="lbl">Title *</span>
           <input
@@ -175,6 +198,21 @@ export default function TestDataPage() {
         </div>
         <div className="filterbar">
           <Dropdown
+            value={zone}
+            onChange={(v) => setZone(v as Zone)}
+            ariaLabel="Demo zone"
+            options={[
+              { value: 'A' as const, label: 'Zone A' },
+              { value: 'B' as const, label: 'Zone B' },
+            ]}
+          />
+          <Dropdown
+            value={category}
+            onChange={(v) => setCategory(v as number | '')}
+            ariaLabel="Demo category"
+            options={categories.map((c) => ({ value: c.id, label: c.name }))}
+          />
+          <Dropdown
             value={priority}
             onChange={(v) => setPriority(v)}
             ariaLabel="Demo priority"
@@ -185,7 +223,7 @@ export default function TestDataPage() {
             ]}
           />
           <Dropdown
-            value={status}
+            value={activeTab === 'Unassigned' ? 'pending' : status}
             onChange={(v) => setStatus(v)}
             ariaLabel="Demo status"
             options={STATUS_OPTIONS.map((s) => ({ value: s, label: s }))}
@@ -198,8 +236,8 @@ export default function TestDataPage() {
       </div>
 
       <div className="card">
-        <h2>Demo tickets ({demos.length})</h2>
-        {demos.length === 0 ? (
+        <h2>{activeTab === 'Unassigned' ? 'Unassigned demo tickets' : 'Demo tickets'} ({(activeTab === 'Unassigned' ? demos.filter((t) => t.status === 'pending' && !t.assignee_id) : demos).length})</h2>
+        {(activeTab === 'Unassigned' ? demos.filter((t) => t.status === 'pending' && !t.assignee_id) : demos).length === 0 ? (
           <div className="empty">No demo tickets yet — add one above to test the pool and statistics.</div>
         ) : (
           <div className="table-wrap">
@@ -216,7 +254,7 @@ export default function TestDataPage() {
                 </tr>
               </thead>
               <tbody>
-                {demos.map((t) => (
+                {(activeTab === 'Unassigned' ? demos.filter((t) => t.status === 'pending' && !t.assignee_id) : demos).map((t) => (
                   <tr key={t.id} style={{ cursor: 'default' }}>
                     <td className="mono">
                       <span className="badge badge--demo">DEMO</span>
@@ -264,8 +302,15 @@ export default function TestDataPage() {
           </div>
         )}
       </div>
+      </>}
 
-      {edit && (
+      {activeTab === 'Statistics' && <div className="card"><h2>Mock ticket statistics</h2><div className="stats-grid">{(['total', 'pending', 'in_progress', 'completed', 'rejected'] as const).map((key) => <div className="stat-card" key={key}><span>{key.replace('_', ' ')}</span><strong>{key === 'total' ? demos.length : demos.filter((t) => t.status === key).length}</strong></div>)}</div><p className="muted">Counts are calculated from this browser’s demo tickets only.</p></div>}
+
+      {activeTab === 'Staff Zones' && <div className="card"><h2>Mock staff zones</h2><p className="muted">Test staff records are saved separately in this browser and never sent to the staff database.</p><div className="filterbar"><input placeholder="Staff name" value={staffDraft.name} onChange={(e) => setStaffDraft({ ...staffDraft, name: e.target.value })}/><input placeholder="Email" value={staffDraft.email} onChange={(e) => setStaffDraft({ ...staffDraft, email: e.target.value })}/><input placeholder="Phone" value={staffDraft.phone} onChange={(e) => setStaffDraft({ ...staffDraft, phone: e.target.value })}/><Dropdown value={staffDraft.zones} onChange={(v) => setStaffDraft({ ...staffDraft, zones: v })} ariaLabel="Mock staff zone" options={[{ value: 'A', label: 'Zone A' }, { value: 'B', label: 'Zone B' }]}/><Dropdown value={staffDraft.profession} onChange={(v) => setStaffDraft({ ...staffDraft, profession: v })} ariaLabel="Mock staff profession" options={['Plumbing', 'Electrical', 'Cleaning', 'Masonry'].map((value) => ({ value, label: value }))}/><button className="btn btn--primary" onClick={() => { if (!staffDraft.name.trim() || !staffDraft.email.includes('@') || !staffDraft.phone.trim()) { toast('Enter a name, valid email and phone.', 'err'); return; } saveMockStaff([...mockStaff, staffDraft]); setStaffDraft({ name: '', email: '', phone: '', zones: 'A', profession: 'Plumbing' }); }}>Add mock staff</button></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Zone</th><th>Profession</th><th /></tr></thead><tbody>{mockStaff.map((s, i) => <tr key={`${s.email}-${i}`}><td>{s.name}</td><td>{s.email}</td><td>{s.phone}</td><td>Zone {s.zones}</td><td>{s.profession}</td><td><button className="btn btn--sm btn--danger" onClick={() => saveMockStaff(mockStaff.filter((_, index) => index !== i))}>Delete</button></td></tr>)}</tbody></table></div></div>}
+
+      {activeTab === 'Requests' && <div className="card"><h2>Mock staff requests</h2><p className="muted">Create presentation requests without touching live requests.</p><div className="filterbar"><input placeholder="Staff name" value={requestDraft.staff} onChange={(e) => setRequestDraft({ ...requestDraft, staff: e.target.value })}/><input placeholder="Request / reason" value={requestDraft.request} onChange={(e) => setRequestDraft({ ...requestDraft, request: e.target.value })}/><button className="btn btn--primary" onClick={() => { if (!requestDraft.staff.trim() || !requestDraft.request.trim()) { toast('Enter staff name and request details.', 'err'); return; } saveMockRequests([...mockRequests, { ...requestDraft, status: 'Pending' }]); setRequestDraft({ staff: '', request: '' }); }}>Add mock request</button></div><div className="table-wrap"><table className="tbl"><thead><tr><th>Staff</th><th>Request</th><th>Status</th><th>Action</th></tr></thead><tbody>{mockRequests.map((r, i) => <tr key={`${r.staff}-${i}`}><td>{r.staff}</td><td>{r.request}</td><td>{r.status}</td><td><button className="btn btn--sm btn--ghost" onClick={() => saveMockRequests(mockRequests.map((item, index) => index === i ? { ...item, status: item.status === 'Pending' ? 'Approved' : 'Pending' } : item))}>{r.status === 'Pending' ? 'Approve' : 'Reset'}</button> <button className="btn btn--sm btn--danger" onClick={() => saveMockRequests(mockRequests.filter((_, index) => index !== i))}>Delete</button></td></tr>)}</tbody></table></div></div>}
+
+      {edit && (activeTab === 'Ticket Pool' || activeTab === 'Unassigned') && (
         <div className="modal-back" onClick={(e) => e.target === e.currentTarget && setEdit(null)}>
           <div className="modal">
             <h2>Modify demo ticket</h2>

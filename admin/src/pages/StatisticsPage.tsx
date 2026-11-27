@@ -3,6 +3,8 @@ import type { EChartsOption } from 'echarts';
 import { api, USE_MOCK } from '../api';
 import Chart from '../components/Chart';
 import type { Stats } from '../models';
+import { useAuth } from '../auth';
+import { useNavigate } from 'react-router-dom';
 
 const CAT_COLORS: Record<string, string> = {
   lighting: '#f59e0b',
@@ -13,6 +15,8 @@ const CAT_COLORS: Record<string, string> = {
 const colorOf = (code: string) => CAT_COLORS[code] ?? '#6366f1';
 
 export default function StatisticsPage() {
+  const { isAdmin } = useAuth();
+  const navigate = useNavigate();
   const [stats, setStats] = useState<Stats | null>(null);
   const [error, setError] = useState('');
 
@@ -107,10 +111,10 @@ export default function StatisticsPage() {
       <div className="page-head">
         <div className="left">
           <h1>
-            Statistics
+            {isAdmin ? 'Admin Dashboard' : 'Statistics'}
             <span className="mock-flag">{USE_MOCK ? 'MOCK DATA' : 'LIVE DATA'}</span>
           </h1>
-          <p>Derived live from tickets and status logs — figures update after every triage action.</p>
+          <p>{isAdmin ? 'Monitor ticket workload and service performance.' : 'Derived live from tickets and status logs — figures update after every triage action.'}</p>
         </div>
         <div className="actions">
           <button className="btn btn--ghost" onClick={printReport} title="Print the statistics report">
@@ -121,26 +125,31 @@ export default function StatisticsPage() {
       </div>
 
       <div className="kpi-grid">
-        <div className="kpi">
+        <button className={`kpi${isAdmin ? ' dashboard-shortcut' : ''}`} onClick={() => isAdmin && (localStorage.setItem('myhanns_ticket_status_filter', 'all'), navigate('/tickets'))}>
           <div className="n">{s.total}</div>
           <div className="l"><i className="fa-solid fa-inbox" aria-hidden="true" /> Total tickets</div>
-        </div>
-        <div className="kpi kpi--warn">
+          {isAdmin && <b className="dashboard-prompt">View Total tickets →</b>}
+        </button>
+        <button className={`kpi kpi--warn${isAdmin ? ' dashboard-shortcut' : ''}`} onClick={() => isAdmin && (localStorage.setItem('myhanns_ticket_status_filter', 'pending'), navigate('/tickets'))}>
           <div className="n">{s.pending}</div>
           <div className="l"><i className="fa-solid fa-hourglass-half" aria-hidden="true" /> Pending</div>
-        </div>
-        <div className="kpi">
+          {isAdmin && <b className="dashboard-prompt">View Pending tickets →</b>}
+        </button>
+        <button className={`kpi${isAdmin ? ' dashboard-shortcut' : ''}`} onClick={() => isAdmin && (localStorage.setItem('myhanns_ticket_status_filter', 'in_progress'), navigate('/tickets'))}>
           <div className="n">{s.in_progress}</div>
           <div className="l"><i className="fa-solid fa-gears" aria-hidden="true" /> In progress</div>
-        </div>
-        <div className="kpi kpi--ok">
+          {isAdmin && <b className="dashboard-prompt">View In Progress tickets →</b>}
+        </button>
+        <button className={`kpi kpi--ok${isAdmin ? ' dashboard-shortcut' : ''}`} onClick={() => isAdmin && (localStorage.setItem('myhanns_ticket_status_filter', 'completed'), navigate('/tickets'))}>
           <div className="n">{s.completed}</div>
           <div className="l"><i className="fa-solid fa-circle-check" aria-hidden="true" /> Completed</div>
-        </div>
-        <div className="kpi kpi--danger">
+          {isAdmin && <b className="dashboard-prompt">View Completed tickets →</b>}
+        </button>
+        <button className={`kpi kpi--danger${isAdmin ? ' dashboard-shortcut' : ''}`} onClick={() => isAdmin && (localStorage.setItem('myhanns_ticket_status_filter', 'overdue'), navigate('/tickets'))}>
           <div className="n">{s.overdue}</div>
           <div className="l"><i className="fa-solid fa-triangle-exclamation" aria-hidden="true" /> Overdue</div>
-        </div>
+          {isAdmin && <b className="dashboard-prompt">View Overdue tickets →</b>}
+        </button>
         <div className="kpi">
           <div className="n">{s.avg_hours_all ?? '—'}</div>
           <div className="l"><i className="fa-solid fa-clock" aria-hidden="true" /> Avg handling time (h)</div>

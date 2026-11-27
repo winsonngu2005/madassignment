@@ -218,8 +218,8 @@ export interface RejectPayload {
 }
 
 export interface EditTicketPayload {
-  assignee_id?: number;
-  due_at?: string;
+  assignee_id?: number | null;
+  due_at?: string | null;
   priority?: Priority;
   note?: string;
 }

@@ -124,6 +124,10 @@ export const realApi = {
     return request<TicketBundle>(`/admin/tickets/${id}`);
   },
 
+  async deleteTicket(id: number): Promise<void> {
+    await request<void>(`/admin/tickets/${id}`, { method: 'DELETE' });
+  },
+
   async acceptTicket(id: number): Promise<TicketBundle> {
     return request<TicketBundle>(`/admin/tickets/${id}/accept`, jsonInit('PATCH', {}));
   },

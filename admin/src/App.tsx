@@ -5,7 +5,6 @@ import LoginPage from './pages/LoginPage';
 import RequestsPage from './pages/RequestsPage';
 import StatisticsPage from './pages/StatisticsPage';
 import StaffZonesPage from './pages/StaffZonesPage';
-import TestDataPage from './pages/TestDataPage';
 import TicketDetailPage from './pages/TicketDetailPage';
 import TicketsPage from './pages/TicketsPage';
 
@@ -44,14 +43,6 @@ export default function App() {
           element={
             <RequireAdmin>
               <RequestsPage />
-            </RequireAdmin>
-          }
-        />
-        <Route
-          path="testing"
-          element={
-            <RequireAdmin>
-              <TestDataPage />
             </RequireAdmin>
           }
         />

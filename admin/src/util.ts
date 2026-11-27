@@ -26,9 +26,10 @@ export function fmtDateTime(v?: string | null): string {
 
 export function dueLabel(ticket: { due_at?: string | null; status: string }): string {
   if (!ticket.due_at) return '—';
-  if (ticket.status !== 'in_progress') return ticket.due_at;
-  const overdue = new Date(ticket.due_at.replace(' ', 'T')).getTime() < Date.now();
-  return overdue ? `${ticket.due_at} (overdue)` : ticket.due_at;
+  const diff = new Date(ticket.due_at.replace(' ', 'T')).getTime() - Date.now();
+  if (diff < 0) return `${ticket.due_at} (Overdue for ${Math.max(1, Math.floor(Math.abs(diff) / 86_400_000))} days)`;
+  if (diff <= 86_400_000) return `${ticket.due_at} (Almost Overdue)`;
+  return ticket.due_at;
 }
 
 export function mapLink(lat?: number | null, lng?: number | null): string {

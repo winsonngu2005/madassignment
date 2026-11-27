@@ -3,7 +3,7 @@ import type { TicketStatus } from '../models';
 const LABELS: Record<TicketStatus, string> = {
   pending: 'Pending',
   accepted: 'Accepted',
-  in_progress: 'In progress',
+  in_progress: 'In Progress',
   completed: 'Completed',
   rejected: 'Rejected',
   cancelled: 'Cancelled',

@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useAuth } from '../auth';
 import type { DutyStatus } from '../models';
 import { toast } from '../util';
+import SandboxPanel from '../pages/SandboxPanel';
 
 export default function AdminLayout() {
   const { user, logout, isAdmin } = useAuth();
@@ -13,10 +14,12 @@ export default function AdminLayout() {
   const [unassigned, setUnassigned] = useState(0);
   const [pendingRequests, setPendingRequests] = useState(0);
   const [dutyStatus, setDutyStatus] = useState<DutyStatus>(user?.duty_status ?? 'on_duty');
+  const [sandbox, setSandbox] = useState(localStorage.getItem('myhanns_sandbox_mode') === 'on');
 
   useEffect(() => { setDutyStatus(user?.duty_status ?? 'on_duty'); }, [user?.id, user?.duty_status]);
 
   const toggleDuty = async () => {
+    if (sandbox) return;
     if (!user) return;
     const next: DutyStatus = dutyStatus === 'on_duty' ? 'off_duty' : 'on_duty';
     try {
@@ -55,19 +58,17 @@ export default function AdminLayout() {
 
   const isStaff = user?.role === 'staff';
 
-  return (
-    <div className="shell">
-      <aside className={`sidebar${collapsed ? ' is-collapsed' : ''}`}>
-        <button
-          className="sidebar__toggle"
-          onClick={() => setCollapsed((c) => !c)}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          <i className={`fa-solid ${collapsed ? 'fa-chevron-right' : 'fa-chevron-left'}`} aria-hidden="true" />
-        </button>
+  const toggleSandbox = (enabled: boolean) => {
+    setSandbox(enabled);
+    localStorage.setItem('myhanns_sandbox_mode', enabled ? 'on' : 'off');
+    window.dispatchEvent(new Event('myhanns-sandbox-change'));
+  };
 
+  return (
+    <div className={`shell${sandbox ? ' sandbox-mode' : ''}`}>
+      <aside className={`sidebar${collapsed ? ' is-collapsed' : ''}`}>
         <div className="sidebar__body">
+          <button className="sidebar__toggle" onClick={() => setCollapsed((c) => !c)} title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}><i className="fa-solid fa-bars" aria-hidden="true" /></button>
           <div className="sidebar__brand">
             <span className="brand-logo-wrap"><img className="brand-logo" src="images/logo.png" alt="" /></span>
             <span className="brand-label">
@@ -77,6 +78,7 @@ export default function AdminLayout() {
           </div>
 
           <nav className="sidebar__nav">
+            <NavLink to="/statistics" className={({ isActive }) => `sidebar__link${isActive ? ' is-active' : ''}`} title={isAdmin ? 'Dashboard' : 'Statistics'}><i className="fa-solid fa-chart-simple" aria-hidden="true" /><span className="label">{isAdmin ? 'Dashboard' : 'Statistics'}</span></NavLink>
             <NavLink
               to="/tickets"
               className={({ isActive }) => `sidebar__link${isActive && location.search !== '?scope=unassigned' ? ' is-active' : ''}`}
@@ -99,15 +101,6 @@ export default function AdminLayout() {
                 </span>
               </NavLink>
             )}
-
-            <NavLink
-              to="/statistics"
-              className={({ isActive }) => `sidebar__link${isActive ? ' is-active' : ''}`}
-              title="Statistics"
-            >
-              <i className="fa-solid fa-chart-simple" aria-hidden="true" />
-              <span className="label">Statistics</span>
-            </NavLink>
 
             <NavLink
               to="/zones"
@@ -133,14 +126,6 @@ export default function AdminLayout() {
                     </span>
                   )}
                 </NavLink>
-                <NavLink
-                  to="/testing"
-                  className={({ isActive }) => `sidebar__link${isActive ? ' is-active' : ''}`}
-                  title="Test Data"
-                >
-                  <i className="fa-solid fa-flask" aria-hidden="true" />
-                  <span className="label">Test Data</span>
-                </NavLink>
               </>
             )}
           </nav>
@@ -151,7 +136,8 @@ export default function AdminLayout() {
               <i className="fa-solid fa-circle-user" aria-hidden="true" />
               <span className="who__name">{user?.name}</span>
             </div>
-            <button className={`duty-switch sidebar-action${dutyStatus === 'on_duty' ? ' is-on' : ''}`} onClick={() => void toggleDuty()} title="Change duty availability">
+            {isAdmin && <button className="btn btn--sm sidebar-action" onClick={() => toggleSandbox(!sandbox)}><i className="fa-solid fa-flask"/><span className="label">{sandbox ? 'Exit Sandbox' : 'Sandbox Mode'}</span></button>}
+            <button className={`duty-switch sidebar-action${dutyStatus === 'on_duty' ? ' is-on' : ''}`} disabled={sandbox} onClick={() => void toggleDuty()} title="Change duty availability">
               <i className="fa-solid fa-rotate" aria-hidden="true" />
               <span className="label">{dutyStatus === 'on_duty' ? 'On Duty' : 'Off Duty'}</span>
             </button>
@@ -170,7 +156,7 @@ export default function AdminLayout() {
         </div>
       </aside>
       <main className="content">
-        <Outlet />
+        {sandbox ? <SandboxPanel onExit={() => toggleSandbox(false)} /> : <Outlet />}
       </main>
     </div>
   );

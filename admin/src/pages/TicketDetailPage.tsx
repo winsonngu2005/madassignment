@@ -329,7 +329,7 @@ export default function TicketDetailPage() {
                 <li key={l.id}>
                   <div className="t-head">
                     {l.from_status ? (
-                      <span className="badge badge--accepted">{l.from_status}</span>
+                      <StatusBadge status={l.from_status} />
                     ) : (
                       <span className="badge badge--cancelled">new</span>
                     )}

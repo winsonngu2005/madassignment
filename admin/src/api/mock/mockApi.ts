@@ -439,7 +439,7 @@ export const mockApi = {
       if (filter.priority && t.priority !== filter.priority) return false;
       if (filter.zone && t.zone !== filter.zone) return false;
       if (filter.assignee_id && t.assignee_id !== filter.assignee_id) return false;
-      if (filter.scope === 'unassigned' && (t.status !== 'pending' || t.assignee_id || t.is_public || t.offered_staff_ids?.length)) return false;
+      if (filter.scope === 'unassigned' && (t.assignee_id && t.due_at)) return false;
       if (filter.scope === 'own' && t.assignee_id !== actor?.id) return false;
       if (q) {
         const hay = `${t.ticket_no} ${t.title} ${t.location_desc} ${t.resident_name} ${t.category_name} ${t.zone} ${t.assignee_name ?? ''}`.toLowerCase();
@@ -463,6 +463,17 @@ export const mockApi = {
 
   async getTicket(id: number): Promise<TicketBundle> {
     return bundleOf(load(), id);
+  },
+
+  async deleteTicket(id: number): Promise<void> {
+    const db = load();
+    assertAdmin(currentActor());
+    const ticketIndex = db.tickets.findIndex((ticket) => ticket.id === id);
+    if (ticketIndex < 0) throw new Error('Ticket not found.');
+    db.tickets.splice(ticketIndex, 1);
+    db.logs = db.logs.filter((log) => log.ticket_id !== id);
+    db.ratings = db.ratings.filter((rating) => rating.ticket_id !== id);
+    save(db);
   },
 
   // ---- triage actions ------------------------------------------------------
@@ -562,7 +573,10 @@ export const mockApi = {
     const t = db.tickets.find((x) => x.id === id);
     if (!t) throw new Error('Ticket not found.');
     const changes: string[] = [];
-    if (payload.assignee_id != null) {
+    if ('assignee_id' in payload && payload.assignee_id === null) {
+      t.assignee_id = null; t.assignee_name = null; t.auto_assigned = false;
+      changes.push('assignee cleared');
+    } else if (payload.assignee_id != null) {
       const staff = db.users.find((u) => u.id === payload.assignee_id && u.role === 'staff');
       if (!staff) throw new Error('Selected staff was not found.');
       if (staff.duty_status !== 'on_duty') throw new Error('Selected staff member is Off Duty.');
@@ -574,9 +588,9 @@ export const mockApi = {
         t.is_public = false;
       }
     }
-    if (payload.due_at != null && payload.due_at !== t.due_at) {
+    if ('due_at' in payload && payload.due_at !== t.due_at) {
       t.due_at = payload.due_at;
-      changes.push(`target completion → ${payload.due_at}`);
+      changes.push(`target completion → ${payload.due_at ?? 'none'}`);
     }
     if (payload.priority && payload.priority !== t.priority) {
       t.priority = payload.priority;

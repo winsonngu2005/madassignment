@@ -139,7 +139,7 @@ export default function LoginPage() {
           </span></label>
 
           <button className="btn login-btn" type="submit" disabled={busy}>
-            {busy ? 'Please wait…' : 'Continue'}
+            {busy ? 'Please wait…' : 'Sign In'}
           </button>
         </form>
       </div>

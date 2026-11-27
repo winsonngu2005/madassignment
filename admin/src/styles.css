@@ -939,7 +939,6 @@ table.tbl td.strong { font-weight: 600; }
  .login-brand img { width: 42px; height: 42px; }
  .login-card { min-height: 58vh; }
 }
-.test-data-nav { margin: 16px 0; flex-wrap: wrap; gap: 6px; }
 .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin: 18px 0; }
 .stat-card { background: #f8fafc; border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 8px; text-transform: capitalize; color: var(--ink-soft); }
 .stat-card strong { color: var(--ink); font-size: 26px; }
@@ -968,4 +967,34 @@ table.tbl td.strong { font-weight: 600; }
 .ticket-row-pinned > td { background: #dbeafe !important; border-top: 2px solid #60a5fa; border-bottom: 2px solid #60a5fa; }
 .ticket-row-pinned > td:first-child { border-left: 2px solid #60a5fa; }
 .ticket-row-pinned > td:last-child { border-right: 2px solid #60a5fa; }
+.dashboard-shortcut { position: relative; isolation: isolate; overflow: hidden; min-height: 100px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink); display: flex; flex-direction: column; justify-content: space-between; text-align: left; cursor: pointer; transition: transform .25s ease, box-shadow .25s ease; }
+.dashboard-shortcut::before { content: ''; position: absolute; z-index: -1; inset: 0; background: #1f2937; transform: translateX(101%); transition: transform .5s cubic-bezier(.77,0,.18,1); }
+.dashboard-shortcut:hover { transform: scale(1.045); z-index: 2; box-shadow: 0 12px 28px rgba(15,23,42,.22); }
+.dashboard-shortcut:hover::before { transform: translateX(0); }
+.dashboard-shortcut .n, .dashboard-shortcut .l, .dashboard-shortcut .dashboard-prompt { position: relative; z-index: 1; transition: color .25s ease, opacity .25s ease, transform .25s ease; }
+.dashboard-shortcut .dashboard-prompt { opacity: 0; transform: translateY(6px); color: #fff; }
+.dashboard-shortcut:hover .n, .dashboard-shortcut:hover .l { color: #fff; }
+.dashboard-shortcut:hover .l { opacity: 0; }
+.dashboard-shortcut:hover .dashboard-prompt { opacity: 1; transform: translateY(-18px); }
+.sidebar__foot .duty-switch { font-family: inherit; font-size: 12.5px; font-weight: 600; }
+.sidebar__foot .btn:hover { background: #fff; color: #111827; }
+.sidebar__foot .btn:hover i { color: #111827; }
+.sidebar.is-collapsed .sidebar__foot .sidebar-action .fa-rotate { display: inline-block; }
+.sidebar.is-collapsed .sidebar__foot .duty-switch .label { display: none; }
+.sidebar.is-collapsed .sidebar__foot .sidebar-action .fa-rotate { margin: 0; }
+.card .filterbar .clear-filters:hover, .card .filterbar .clear-filters:focus-visible { background-color: #fee2e2 !important; color: #991b1b !important; border-color: #fca5a5 !important; }
+.sidebar__toggle { background: transparent; border: none; box-shadow: none; color: #cbd5e1; transition: background-color .2s ease, color .2s ease, transform .2s ease; }
+.sidebar__toggle:hover { background: rgba(255,255,255,.12); color: #fff; transform: scale(1.04); }
+.step.is-current .step__dot::after { content: ''; position: absolute; inset: -5px; border: 2px solid rgba(96,165,250,.7); border-radius: 50%; pointer-events: none; animation: step-dot-pulse 1.8s cubic-bezier(.2,.65,.3,1) infinite; }
+@keyframes step-dot-pulse { 0% { transform: scale(.7); opacity: .75; } 100% { transform: scale(1.9); opacity: 0; } }
+.clear-filters:hover { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+.due-overdue { color: #991b1b; background: #fee2e2; border-radius: 5px; }
+.none-value { color: #555; }
+.sidebar__brand { display: flex; align-items: center; }
+.sidebar__toggle { position: static; top: auto; right: auto; transform: none; flex: none; margin: 0 auto 12px 0; border-radius: 9px; }
+.sandbox-theme { --brand-2:#f59e0b; --brand-soft:#fef3c7; --surface:#fffbeb; --ink:#1f2937; --line:#d6a84d; background:#fffbeb; }
+.sandbox-theme body { background:#fffbeb; color:#1f2937; }
+.sandbox-mode .sidebar { background:linear-gradient(180deg,#78350f,#f59e0b); }
+.sandbox-banner { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:14px 18px; margin-bottom:16px; border-radius:10px; background:#f59e0b; color:#1f2937; }
+.sandbox-theme .card,.sandbox-theme .kpi { background:#fffdf5; }
 .strong.is-alert .fa-triangle-exclamation { margin-right: 5px; }

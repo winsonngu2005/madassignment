@@ -5,7 +5,7 @@ import Dropdown from '../components/Dropdown';
 import PriorityTag from '../components/PriorityTag';
 import StatusBadge from '../components/StatusBadge';
 import { useAuth } from '../auth';
-import type { AssignPayload, Category, Priority, Ticket, TicketStatus, User, Zone } from '../models';
+import type { Category, Priority, Ticket, TicketStatus, User, Zone } from '../models';
 import { dueLabel, toast } from '../util';
 
 const STATUS_OPTIONS: (TicketStatus | '')[] = [
@@ -21,6 +21,7 @@ const STATUS_OPTIONS: (TicketStatus | '')[] = [
 type SortKey = 'priority' | 'newest' | 'due';
 
 const PRIORITY_RANK: Record<string, number> = { urgent: 3, normal: 2, low: 1 };
+const STATUS_LABEL: Record<TicketStatus, string> = { pending: 'Pending', accepted: 'Accepted', in_progress: 'In Progress', completed: 'Completed', rejected: 'Rejected', cancelled: 'Cancelled' };
 
 export default function TicketsPage() {
   const navigate = useNavigate();
@@ -36,9 +37,11 @@ export default function TicketsPage() {
   const [category, setCategory] = useState<number | ''>('');
   const [zone, setZone] = useState<Zone | ''>('');
   const [assignee, setAssignee] = useState<number | ''>('');
+  const [dueBucket, setDueBucket] = useState<'' | 'none' | 'almost' | 'overdue'>('');
+  const [completionTab, setCompletionTab] = useState<'open' | 'completed'>('open');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortKey>('priority');
-  const [assigningTicketId, setAssigningTicketId] = useState<number | null>(null);
+  const [rowEdits, setRowEdits] = useState<Record<number, { assigneeId?: number; dueChoice?: string }>>({});
   const [pinnedTicketId, setPinnedTicketId] = useState<number | null>(() => {
     const saved = Number(localStorage.getItem('myhanns_last_unassigned_ticket'));
     return Number.isFinite(saved) && saved > 0 ? saved : null;
@@ -46,6 +49,10 @@ export default function TicketsPage() {
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [staff, setStaff] = useState<User[]>([]);
+  useEffect(() => {
+    const requested = localStorage.getItem('myhanns_ticket_status_filter');
+    if (requested !== null) { if (requested === 'overdue') setDueBucket('overdue'); else setStatus(requested === 'all' ? '' : requested as TicketStatus | ''); localStorage.removeItem('myhanns_ticket_status_filter'); }
+  }, []);
 
   // deep link support: /tickets?scope=unassigned from the sidebar badge
   const scope = params.get('scope') === 'unassigned' ? ('unassigned' as const) : undefined;
@@ -63,7 +70,7 @@ export default function TicketsPage() {
     }
   }, [isAdmin]);
 
-  const hasFilters = Boolean(status || priority || category || zone || assignee || search.trim());
+  const hasFilters = Boolean(status || priority || category || zone || assignee || dueBucket || search.trim());
   useEffect(() => {
     if (scope !== 'unassigned' || hasFilters) {
       setPinnedTicketId(null);
@@ -75,8 +82,7 @@ export default function TicketsPage() {
     if (!silent) setLoading(true);
     setError('');
     try {
-      setTickets(
-        await api.listTickets({
+      const results = await api.listTickets({
           status,
           priority,
           category_id: category || undefined,
@@ -84,14 +90,20 @@ export default function TicketsPage() {
           assignee_id: assignee || undefined,
           search: search.trim(),
           scope,
-        }),
-      );
+        });
+      const dueFiltered = dueBucket ? results.filter((ticket) => {
+        if (dueBucket === 'none') return !ticket.due_at;
+        if (!ticket.due_at) return false;
+        const remaining = new Date(ticket.due_at.replace(' ', 'T')).getTime() - Date.now();
+        return dueBucket === 'overdue' ? remaining < 0 : remaining >= 0 && remaining <= 86_400_000;
+      }) : results;
+      setTickets(dueFiltered.filter((ticket) => completionTab === 'completed' ? ticket.status === 'completed' : ticket.status !== 'completed'));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load tickets.');
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [status, priority, category, zone, assignee, search, scope]);
+  }, [status, priority, category, zone, assignee, search, scope, dueBucket, completionTab]);
 
   // debounce search
   useEffect(() => {
@@ -124,21 +136,23 @@ export default function TicketsPage() {
     return list;
   }, [tickets, sort, scope, hasFilters, pinnedTicketId]);
 
-  const assignFromPool = async (ticket: Ticket, staffId: number) => {
-    const member = staff.find((person) => person.id === staffId);
-    if (!member) return;
-    const dueAt = ticket.due_at ?? new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString().slice(0, 19).replace('T', ' ');
-    const payload: AssignPayload = { assignee_id: member.id, priority: ticket.priority, due_at: dueAt, note: 'Assigned from Unassigned Ticket Pool.' };
+  const savePoolRow = async (ticket: Ticket) => {
+    const edit = rowEdits[ticket.id] ?? {};
+    const dueAt = edit.dueChoice === 'none' ? null : edit.dueChoice && edit.dueChoice !== 'existing' ? new Date(Date.now() + Number(edit.dueChoice) * 86_400_000).toISOString().slice(0, 19).replace('T', ' ') : ticket.due_at ?? null;
     try {
-      await api.assignTicket(ticket.id, payload);
-      setAssigningTicketId(null);
-      if (pinnedTicketId === ticket.id) {
-        setPinnedTicketId(null);
-        localStorage.removeItem('myhanns_last_unassigned_ticket');
-      }
+      if (edit.assigneeId && dueAt) await api.assignTicket(ticket.id, { assignee_id: edit.assigneeId, priority: ticket.priority, due_at: dueAt });
+      else if (edit.assigneeId) await api.editTicket(ticket.id, { assignee_id: edit.assigneeId, due_at: dueAt });
+      else await api.editTicket(ticket.id, { ...(edit.assigneeId === 0 ? { assignee_id: null } : {}), due_at: dueAt });
+      setRowEdits((all) => { const next = { ...all }; delete next[ticket.id]; return next; });
       await reload(true);
-      toast(`Assigned to ${member.name}.`);
-    } catch (err) { toast(err instanceof Error ? err.message : 'Could not assign ticket.', 'err'); }
+      toast('Ticket changes saved.');
+    } catch (err) { toast(err instanceof Error ? err.message : 'Could not save ticket.', 'err'); }
+  };
+
+  const deletePoolRow = async (ticket: Ticket) => {
+    if (!window.confirm(`Delete ${ticket.ticket_no}? This removes the ticket and its history.`)) return;
+    try { await api.deleteTicket(ticket.id); await reload(true); toast('Ticket deleted.'); }
+    catch (err) { toast(err instanceof Error ? err.message : 'Could not delete ticket.', 'err'); }
   };
 
   return (
@@ -176,12 +190,16 @@ export default function TicketsPage() {
       </div>
 
       <div className="card">
+        <nav className="subnav" aria-label="Ticket completion filter" style={{ marginBottom: 14 }}>
+          <button type="button" className={`subnav__btn${completionTab === 'open' ? ' is-on' : ''}`} onClick={() => { setCompletionTab('open'); setStatus(''); }}>All except Completed</button>
+          <button type="button" className={`subnav__btn${completionTab === 'completed' ? ' is-on' : ''}`} onClick={() => { setCompletionTab('completed'); setStatus(''); }}>Completed</button>
+        </nav>
         <div className="filterbar">
           <Dropdown
             value={status}
             onChange={(v) => setStatus(v as TicketStatus | '')}
             ariaLabel="Filter by status"
-            options={STATUS_OPTIONS.map((s) => ({ value: s, label: s === '' ? 'All statuses' : s }))}
+            options={STATUS_OPTIONS.map((s) => ({ value: s, label: s === '' ? 'All statuses' : STATUS_LABEL[s] }))}
           />
           <Dropdown
             value={priority}
@@ -194,6 +212,7 @@ export default function TicketsPage() {
               { value: 'low', label: 'low' },
             ]}
           />
+          <Dropdown value={dueBucket} onChange={(value) => setDueBucket(value as typeof dueBucket)} ariaLabel="Filter by due date" options={[{ value: '', label: 'All due dates' }, { value: 'none', label: 'No due' }, { value: 'almost', label: 'Almost due' }, { value: 'overdue', label: 'Overdue' }]} />
           {isAdmin && (
             <>
               <Dropdown
@@ -226,7 +245,7 @@ export default function TicketsPage() {
               />
             </>
           )}
-          <button className="btn btn--ghost" type="button" onClick={() => { setStatus(''); setPriority(''); setCategory(''); setZone(''); setAssignee(''); }}>Clear All Filters</button>
+          <button className="btn btn--ghost clear-filters" type="button" onClick={() => { setStatus(''); setPriority(''); setCategory(''); setZone(''); setAssignee(''); setDueBucket(''); }}>Clear All Filters</button>
           <div className="search-wrap">
             <input
               type="text"
@@ -270,7 +289,8 @@ export default function TicketsPage() {
                   <th>Priority</th>
                   <th>Assignee</th>
                   <th>Due</th>
-                  <th>Reported</th>
+                  <th>Reported Time</th>
+                  {scope === 'unassigned' && isAdmin && <th>Actions</th>}
                 </tr>
               </thead>
               <tbody>
@@ -295,22 +315,19 @@ export default function TicketsPage() {
                       <PriorityTag priority={t.priority} />
                     </td>
                     <td onClick={(event) => event.stopPropagation()}>
-                      {t.is_public && !t.assignee_id ? (
+                      {scope === 'unassigned' && isAdmin ? (
+                        <Dropdown value={rowEdits[t.id]?.assigneeId ?? t.assignee_id ?? 0} onChange={(id) => setRowEdits((all) => ({ ...all, [t.id]: { ...all[t.id], assigneeId: id } }))} ariaLabel={`Assignee for ${t.ticket_no}`} options={[{ value: 0, label: 'None' }, ...staff.filter((member) => member.role === 'staff' && member.duty_status === 'on_duty').map((member) => ({ value: member.id, label: member.name }))]} />
+                      ) : t.is_public && !t.assignee_id ? (
                         <span className="badge badge--demo">public pool</span>
                       ) : t.offered_staff_ids?.length ? (
                         <span className="badge badge--accepted">{user?.role === 'staff' && t.offered_staff_ids.includes(user.id) ? 'Offered to you' : `Offered · ${t.offered_staff_ids.length} staff`}</span>
-                      ) : scope === 'unassigned' && isAdmin && !t.assignee_id ? (
-                        assigningTicketId === t.id ? (
-                          <Dropdown value={0} onChange={(id) => void assignFromPool(t, id)} ariaLabel={`Assign ${t.ticket_no}`} options={[{ value: 0, label: 'Choose staff…' }, ...staff.filter((member) => member.role === 'staff' && member.duty_status === 'on_duty').map((member) => ({ value: member.id, label: member.name }))]} />
-                        ) : (
-                          <button className="btn btn--sm btn--ghost" type="button" onClick={() => setAssigningTicketId(t.id)} aria-label={`Assign ${t.ticket_no}`} title="Select responsible staff">—</button>
-                        )
                       ) : (
-                        (t.assignee_name ?? '—')
+                        t.assignee_name ? t.assignee_name : <i className="none-value">None</i>
                       )}
                     </td>
-                    <td className="mono">{dueLabel(t)}</td>
+                    <td className={`mono${t.due_at && new Date(t.due_at.replace(' ', 'T')).getTime() < Date.now() ? ' due-overdue' : ''}`} onClick={(event) => event.stopPropagation()}>{scope === 'unassigned' && isAdmin ? <Dropdown value={rowEdits[t.id]?.dueChoice ?? (t.due_at ? 'existing' : 'none')} onChange={(dueChoice) => setRowEdits((all) => ({ ...all, [t.id]: { ...all[t.id], dueChoice } }))} ariaLabel={`Due date for ${t.ticket_no}`} options={[{ value: 'existing', label: t.due_at ? dueLabel(t) : 'Existing due date' }, { value: 'none', label: 'No due' }, { value: '1', label: 'Due in 1 day' }, { value: '2', label: 'Due in 2 days' }, { value: '7', label: 'Due in 7 days' }]} /> : <i className={!t.due_at ? 'none-value' : undefined}>{dueLabel(t) === '—' ? 'None' : dueLabel(t)}</i>}</td>
                     <td className="mono">{t.created_at}</td>
+                    {scope === 'unassigned' && isAdmin && <td onClick={(event) => event.stopPropagation()}>{rowEdits[t.id] ? <><button className="btn btn--sm btn--primary" onClick={() => void savePoolRow(t)}>Save</button> <button className="btn btn--sm btn--danger" onClick={() => void deletePoolRow(t)}>Delete</button></> : <span className="none-value">—</span>}</td>}
                   </tr>
                 ))}
               </tbody>

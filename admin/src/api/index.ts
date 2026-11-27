@@ -28,6 +28,7 @@ import { USE_MOCK } from './config';
 import { CATEGORY_PROFESSIONS } from './professions';
 import {
   clearDemoTickets,
+  deleteDemoTicket,
   demoAccept,
   demoAssign,
   demoComplete,
@@ -83,7 +84,7 @@ function demoMatchesFilter(t: Ticket, filter: TicketFilter): boolean {
   if (filter.category_id && t.category_id !== filter.category_id) return false;
   if (filter.zone && t.zone !== filter.zone) return false;
   if (filter.assignee_id && t.assignee_id !== filter.assignee_id) return false;
-  if (filter.scope === 'unassigned' && (t.status !== 'pending' || t.assignee_id || t.is_public || t.offered_staff_ids?.length)) return false;
+  if (filter.scope === 'unassigned' && t.assignee_id && t.due_at) return false;
   if (filter.scope === 'own' && t.assignee_id !== actorFromStorage()?.id) return false;
   const q = (filter.search ?? '').trim().toLowerCase();
   if (q) {
@@ -197,6 +198,11 @@ export const api = {
     const demo = getDemoBundle(id);
     if (demo) return demo;
     return base.getTicket(id);
+  },
+
+  async deleteTicket(id: number): Promise<void> {
+    if (isDemoTicket(id)) { deleteDemoTicket(id); return; }
+    return base.deleteTicket(id);
   },
 
   async acceptTicket(id: number): Promise<TicketBundle> {
